@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: scraparr-postgres
+    environment:
+      POSTGRES_USER: scraparr
+      POSTGRES_PASSWORD: scraparr
+      POSTGRES_DB: scraparr
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scraparr"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    container_name: scraparr-backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://scraparr:scraparr@postgres:5432/scraparr
+      DEBUG: "True"
+      CORS_ORIGINS: '["http://localhost:3000", "http://localhost:8000"]'
+    volumes:
+      - ./backend:/app/backend
+      - ./scrapers:/app/scrapers
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    container_name: scraparr-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    environment:
+      REACT_APP_API_URL: http://localhost:8000
+
+volumes:
+  postgres-data:
