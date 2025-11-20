@@ -47,7 +47,7 @@ class Park4NightScraper(BaseScraper):
             Column('longitude', Float),
             Column('pays', String(100)),
             Column('ville', String(200)),
-            Column('description', Text),
+            Column('description', Text),  # Fallback description (priority: en > fr > nl > de > es > it)
             Column('prix', String(100)),
             Column('rating', Float),
             Column('nb_comment', Integer),
@@ -72,7 +72,18 @@ class Park4NightScraper(BaseScraper):
             Column('scraped_at', DateTime, default=func.now()),
         )
 
-        return [places_table, reviews_table]
+        # Multilingual descriptions table
+        place_descriptions_table = Table(
+            'place_descriptions',
+            self.metadata,
+            Column('id', Integer, primary_key=True, autoincrement=True),
+            Column('place_id', Integer, index=True),  # Foreign key to places.id
+            Column('language_code', String(5)),  # ISO 639-1: en, nl, fr, de, es, it
+            Column('description', Text),
+            Column('created_at', DateTime, default=func.now()),
+        )
+
+        return [places_table, reviews_table, place_descriptions_table]
 
     async def after_scrape(self, results: List[Dict[str, Any]], params: Dict[str, Any]) -> None:
         """
@@ -96,6 +107,7 @@ class Park4NightScraper(BaseScraper):
                 tables = self.define_tables()
                 places_table = tables[0]
                 reviews_table = tables[1]
+                place_descriptions_table = tables[2]
 
                 # Create tables if they don't exist
                 await conn.run_sync(self.metadata.create_all)
@@ -119,6 +131,24 @@ class Park4NightScraper(BaseScraper):
                         except (ValueError, TypeError):
                             return None
 
+                    # Extract multilingual descriptions
+                    language_descriptions = {}
+                    for lang_code in ['en', 'nl', 'fr', 'de', 'es', 'it']:
+                        desc = place.get(f'description_{lang_code}')
+                        if desc and desc.strip():
+                            language_descriptions[lang_code] = desc.strip()
+
+                    # Fallback description (priority: en > fr > nl > de > es > it)
+                    fallback_description = (
+                        language_descriptions.get('en') or
+                        language_descriptions.get('fr') or
+                        language_descriptions.get('nl') or
+                        language_descriptions.get('de') or
+                        language_descriptions.get('es') or
+                        language_descriptions.get('it') or
+                        place.get('description')
+                    )
+
                     # Prepare place data with type conversions
                     place_data = {
                         'id': safe_int(place.get('id')),
@@ -128,7 +158,7 @@ class Park4NightScraper(BaseScraper):
                         'longitude': safe_float(place.get('longitude')),
                         'pays': place.get('pays'),
                         'ville': place.get('ville'),
-                        'description': place.get('description_fr') or place.get('description_en') or place.get('description'),
+                        'description': fallback_description,
                         'prix': place.get('prix_stationnement') or place.get('prix'),
                         'rating': safe_float(place.get('note_moyenne') or place.get('rating')),
                         'nb_comment': safe_int(place.get('nb_commentaires') or place.get('nbComment') or place.get('nb_comment')),
@@ -158,6 +188,28 @@ class Park4NightScraper(BaseScraper):
                         }
                     )
                     await conn.execute(stmt)
+
+                    # Insert multilingual descriptions
+                    place_id = safe_int(place.get('id'))
+                    if place_id and language_descriptions:
+                        # Delete existing descriptions for this place (to handle updates)
+                        from sqlalchemy import delete
+                        await conn.execute(
+                            delete(place_descriptions_table).where(
+                                place_descriptions_table.c.place_id == place_id
+                            )
+                        )
+
+                        # Insert all language descriptions
+                        for lang_code, description in language_descriptions.items():
+                            desc_data = {
+                                'place_id': place_id,
+                                'language_code': lang_code,
+                                'description': description,
+                            }
+                            await conn.execute(
+                                place_descriptions_table.insert().values(**desc_data)
+                            )
 
                     # Insert reviews if present
                     reviews = place.get('reviews', [])
@@ -568,7 +620,18 @@ class Park4NightBulkScraper(BaseScraper):
             Column('scraped_at', DateTime, default=func.now()),
         )
 
-        return [places_table, reviews_table]
+        # Multilingual descriptions table
+        place_descriptions_table = Table(
+            'place_descriptions',
+            self.metadata,
+            Column('id', Integer, primary_key=True, autoincrement=True),
+            Column('place_id', Integer, index=True),  # Foreign key to places.id
+            Column('language_code', String(5)),  # ISO 639-1: en, nl, fr, de, es, it
+            Column('description', Text),
+            Column('created_at', DateTime, default=func.now()),
+        )
+
+        return [places_table, reviews_table, place_descriptions_table]
 
     async def after_scrape(self, results: List[Dict[str, Any]], params: Dict[str, Any]) -> None:
         """Store bulk scraped data in database"""
@@ -585,21 +648,57 @@ class Park4NightBulkScraper(BaseScraper):
                 tables = self.define_tables()
                 places_table = tables[0]
                 reviews_table = tables[1]
+                place_descriptions_table = tables[2]
 
                 await conn.run_sync(self.metadata.create_all)
 
+                # Helper to safely convert values
+                def safe_int(val):
+                    if val is None or val == '':
+                        return None
+                    try:
+                        return int(val)
+                    except (ValueError, TypeError):
+                        return None
+
+                def safe_float(val):
+                    if val is None or val == '':
+                        return None
+                    try:
+                        return float(val)
+                    except (ValueError, TypeError):
+                        return None
+
                 for place in results:
+                    # Extract multilingual descriptions
+                    language_descriptions = {}
+                    for lang_code in ['en', 'nl', 'fr', 'de', 'es', 'it']:
+                        desc = place.get(f'description_{lang_code}')
+                        if desc and desc.strip():
+                            language_descriptions[lang_code] = desc.strip()
+
+                    # Fallback description (priority: en > fr > nl > de > es > it)
+                    fallback_description = (
+                        language_descriptions.get('en') or
+                        language_descriptions.get('fr') or
+                        language_descriptions.get('nl') or
+                        language_descriptions.get('de') or
+                        language_descriptions.get('es') or
+                        language_descriptions.get('it') or
+                        place.get('description')
+                    )
+
                     place_data = {
-                        'id': place.get('id'),
+                        'id': safe_int(place.get('id')),
                         'nom': place.get('nom'),
                         'type': place.get('type'),
-                        'latitude': place.get('latitude'),
-                        'longitude': place.get('longitude'),
+                        'latitude': safe_float(place.get('latitude')),
+                        'longitude': safe_float(place.get('longitude')),
                         'pays': place.get('pays'),
                         'ville': place.get('ville'),
-                        'description': place.get('description'),
+                        'description': fallback_description,
                         'prix': place.get('prix'),
-                        'rating': place.get('rating'),
+                        'rating': safe_float(place.get('rating')),
                         'nb_comment': place.get('nbComment') or place.get('nb_comment'),
                         'services': place.get('services'),
                         'raw_data': place,
@@ -626,6 +725,28 @@ class Park4NightBulkScraper(BaseScraper):
                         }
                     )
                     await conn.execute(stmt)
+
+                    # Insert multilingual descriptions
+                    place_id = safe_int(place.get('id'))
+                    if place_id and language_descriptions:
+                        # Delete existing descriptions for this place (to handle updates)
+                        from sqlalchemy import delete
+                        await conn.execute(
+                            delete(place_descriptions_table).where(
+                                place_descriptions_table.c.place_id == place_id
+                            )
+                        )
+
+                        # Insert all language descriptions
+                        for lang_code, description in language_descriptions.items():
+                            desc_data = {
+                                'place_id': place_id,
+                                'language_code': lang_code,
+                                'description': description,
+                            }
+                            await conn.execute(
+                                place_descriptions_table.insert().values(**desc_data)
+                            )
 
                     # Insert reviews if present
                     reviews = place.get('reviews', [])
@@ -862,6 +983,18 @@ class Park4NightGridScraper(BaseScraper):
             extend_existing=True,
         )
 
+        # Multilingual descriptions table
+        place_descriptions_table = Table(
+            'place_descriptions',
+            self.metadata,
+            Column('id', Integer, primary_key=True, autoincrement=True),
+            Column('place_id', Integer),  # Foreign key to places.id
+            Column('language_code', String(5)),  # ISO 639-1: en, nl, fr, de, es, it
+            Column('description', Text),
+            Column('created_at', DateTime, default=func.now()),
+            extend_existing=True,
+        )
+
         # Progress tracking table
         grid_progress_table = Table(
             'grid_progress',
@@ -875,7 +1008,7 @@ class Park4NightGridScraper(BaseScraper):
             extend_existing=True,
         )
 
-        return [places_table, reviews_table, grid_progress_table]
+        return [places_table, reviews_table, place_descriptions_table, grid_progress_table]
 
     async def after_scrape(self, results: List[Dict[str, Any]], params: Dict[str, Any]) -> None:
         """Store grid scraped data in database"""
@@ -892,7 +1025,8 @@ class Park4NightGridScraper(BaseScraper):
                 tables = self.define_tables()
                 places_table = tables[0]
                 reviews_table = tables[1]
-                grid_progress_table = tables[2]
+                place_descriptions_table = tables[2]
+                grid_progress_table = tables[3]
 
                 await conn.run_sync(self.metadata.create_all)
 
@@ -914,6 +1048,24 @@ class Park4NightGridScraper(BaseScraper):
                         return None
 
                 for place in results:
+                    # Extract multilingual descriptions
+                    language_descriptions = {}
+                    for lang_code in ['en', 'nl', 'fr', 'de', 'es', 'it']:
+                        desc = place.get(f'description_{lang_code}')
+                        if desc and desc.strip():
+                            language_descriptions[lang_code] = desc.strip()
+
+                    # Fallback description (priority: en > fr > nl > de > es > it)
+                    fallback_description = (
+                        language_descriptions.get('en') or
+                        language_descriptions.get('fr') or
+                        language_descriptions.get('nl') or
+                        language_descriptions.get('de') or
+                        language_descriptions.get('es') or
+                        language_descriptions.get('it') or
+                        place.get('description')
+                    )
+
                     place_data = {
                         'id': safe_int(place.get('id')),
                         'nom': place.get('titre') or place.get('nom'),
@@ -922,7 +1074,7 @@ class Park4NightGridScraper(BaseScraper):
                         'longitude': safe_float(place.get('longitude')),
                         'pays': place.get('pays'),
                         'ville': place.get('ville'),
-                        'description': place.get('description_fr') or place.get('description_en') or place.get('description'),
+                        'description': fallback_description,
                         'prix': place.get('prix_stationnement') or place.get('prix'),
                         'rating': safe_float(place.get('note_moyenne') or place.get('rating')),
                         'nb_comment': safe_int(place.get('nb_commentaires') or place.get('nbComment') or place.get('nb_comment')),
@@ -951,6 +1103,28 @@ class Park4NightGridScraper(BaseScraper):
                         }
                     )
                     await conn.execute(stmt)
+
+                    # Insert multilingual descriptions
+                    place_id = safe_int(place.get('id'))
+                    if place_id and language_descriptions:
+                        # Delete existing descriptions for this place (to handle updates)
+                        from sqlalchemy import delete
+                        await conn.execute(
+                            delete(place_descriptions_table).where(
+                                place_descriptions_table.c.place_id == place_id
+                            )
+                        )
+
+                        # Insert all language descriptions
+                        for lang_code, description in language_descriptions.items():
+                            desc_data = {
+                                'place_id': place_id,
+                                'language_code': lang_code,
+                                'description': description,
+                            }
+                            await conn.execute(
+                                place_descriptions_table.insert().values(**desc_data)
+                            )
 
                     # Insert reviews if present
                     reviews = place.get('reviews', [])
