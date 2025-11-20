@@ -2,11 +2,15 @@ FROM node:18-alpine as build
 
 WORKDIR /app
 
+# Accept build arg
+ARG REACT_APP_API_URL=http://scraparr:8000
+ENV REACT_APP_API_URL=$REACT_APP_API_URL
+
 # Copy package files
 COPY frontend/package*.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm install --legacy-peer-deps
 
 # Copy source
 COPY frontend/ .

@@ -36,6 +36,7 @@ class BaseScraper(ABC):
         schema_name: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
+        execution_id: Optional[int] = None,
     ):
         """
         Initialize scraper
@@ -45,11 +46,13 @@ class BaseScraper(ABC):
             schema_name: PostgreSQL schema name for this scraper's data
             config: Custom configuration for the scraper
             headers: HTTP headers to use
+            execution_id: Execution ID for progress tracking
         """
         self.scraper_id = scraper_id
         self.schema_name = schema_name
         self.config = config or {}
         self.headers = headers or {}
+        self.execution_id = execution_id
         self.logger = logging.getLogger(f"scraper.{scraper_id}")
 
         # HTTP client for making requests
@@ -68,6 +71,10 @@ class BaseScraper(ABC):
 
         # Logs collected during execution
         self.logs: List[str] = []
+
+        # Progress tracking
+        self._items_scraped = 0
+        self._start_time = datetime.now()
 
     def log(self, message: str, level: str = "info"):
         """
@@ -186,6 +193,38 @@ class BaseScraper(ABC):
             Formatted log string
         """
         return "\n".join(self.logs)
+
+    async def report_progress(self, items_scraped: int, message: str) -> None:
+        """
+        Report progress to websocket subscribers
+
+        Args:
+            items_scraped: Number of items scraped so far
+            message: Progress message
+
+        Example:
+            await self.report_progress(150, "Processing grid point (45.5, 3.0)...")
+        """
+        if self.execution_id is None:
+            return
+
+        self._items_scraped = items_scraped
+        elapsed_seconds = (datetime.now() - self._start_time).total_seconds()
+
+        # Import here to avoid circular dependency
+        from app.services.progress_tracker import progress_tracker
+
+        await progress_tracker.update_progress(
+            execution_id=self.execution_id,
+            status="running",
+            items_scraped=items_scraped,
+            elapsed_seconds=elapsed_seconds,
+            message=message
+        )
+
+    def get_elapsed_time(self) -> float:
+        """Get elapsed time in seconds since scraper started"""
+        return (datetime.now() - self._start_time).total_seconds()
 
     async def cleanup(self):
         """Cleanup resources"""

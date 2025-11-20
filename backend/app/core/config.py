@@ -20,9 +20,9 @@ class Settings(BaseSettings):
     DATABASE_ECHO: bool = False
 
     # Security
-    SECRET_KEY: str = "your-secret-key-change-this-in-production"
+    SECRET_KEY: str = "scraparr-super-secret-key-change-in-production-use-env-variable"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 43200  # 30 days for convenience
 
     # CORS
     CORS_ORIGINS: list = ["http://localhost:3000", "http://localhost:8000"]

@@ -5,7 +5,8 @@ from sqlalchemy import select, func
 from typing import List
 
 from app.core.database import get_db
-from app.models import Job, Scraper
+from app.core.security import get_current_active_user
+from app.models import Job, Scraper, User
 from app.schemas import (
     JobCreate,
     JobUpdate,

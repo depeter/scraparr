@@ -1,6 +1,7 @@
 """Service for loading and running scrapers"""
 import importlib
 import sys
+import time
 from typing import Dict, Any, List, Optional, Type
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +9,7 @@ from sqlalchemy import select
 
 from app.scrapers.base import BaseScraper
 from app.models import Scraper, Execution
+from app.services.progress_tracker import progress_tracker
 import logging
 
 logger = logging.getLogger(__name__)
@@ -100,6 +102,16 @@ class ScraperRunner:
         logger.info(f"Starting execution {execution.id} for scraper {scraper_id}")
 
         scraper_instance = None
+        start_time = time.time()
+
+        # Send initial progress update
+        await progress_tracker.update_progress(
+            execution_id=execution.id,
+            status="running",
+            items_scraped=0,
+            elapsed_seconds=0.0,
+            message="Starting scraper..."
+        )
 
         try:
             # Load scraper class
@@ -114,9 +126,17 @@ class ScraperRunner:
                 schema_name=scraper_config.schema_name,
                 config=scraper_config.config or {},
                 headers=scraper_config.headers or {},
+                execution_id=execution.id,  # Pass execution ID for progress tracking
             )
 
             # Run before_scrape hook
+            await progress_tracker.update_progress(
+                execution_id=execution.id,
+                status="running",
+                items_scraped=0,
+                elapsed_seconds=time.time() - start_time,
+                message="Initializing scraper..."
+            )
             await scraper_instance.before_scrape(params)
 
             # Execute scraper
@@ -130,6 +150,15 @@ class ScraperRunner:
             execution.items_scraped = len(results) if results else 0
             execution.completed_at = datetime.utcnow()
             execution.logs = scraper_instance.get_logs()
+
+            # Send final progress update
+            await progress_tracker.update_progress(
+                execution_id=execution.id,
+                status="success",
+                items_scraped=execution.items_scraped,
+                elapsed_seconds=time.time() - start_time,
+                message=f"Completed successfully: {execution.items_scraped} items scraped"
+            )
 
             logger.info(f"Execution {execution.id} completed successfully: {execution.items_scraped} items")
 
@@ -151,6 +180,15 @@ class ScraperRunner:
             if scraper_instance:
                 execution.logs = scraper_instance.get_logs()
 
+            # Send failure progress update
+            await progress_tracker.update_progress(
+                execution_id=execution.id,
+                status="failed",
+                items_scraped=execution.items_scraped if execution.items_scraped else 0,
+                elapsed_seconds=time.time() - start_time,
+                message=f"Failed: {str(e)}"
+            )
+
         finally:
             # Cleanup scraper resources
             if scraper_instance:
@@ -162,6 +200,9 @@ class ScraperRunner:
             # Save execution
             await db.commit()
             await db.refresh(execution)
+
+            # Mark execution as complete in progress tracker
+            await progress_tracker.complete_execution(execution.id)
 
         return execution.id
 

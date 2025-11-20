@@ -2,6 +2,8 @@
 
 Advanced web scraping management system with scheduling, multi-database support, and a modern management interface.
 
+**Current Focus**: Scraping Park4Night camping database across 29 European countries with weekly automated jobs.
+
 ## Features
 
 - **React Frontend**: Modern, responsive management interface for creating, scheduling, and monitoring scraping jobs
@@ -249,6 +251,23 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 # Frontend
 REACT_APP_API_URL=http://localhost:8000
 ```
+
+## Documentation
+
+- **[CLAUDE.md](CLAUDE.md)** - Comprehensive technical documentation for Claude Code
+- **[SESSION_SUMMARY.md](SESSION_SUMMARY.md)** - Current project state and recent work
+- **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** - Quick command reference and cheat sheet
+
+## Current State (2025-11-04)
+
+- ✅ 29 weekly scheduled jobs for European countries
+- ✅ Grid-based Park4Night scraper fully implemented
+- ✅ Resume capability working
+- ✅ Random delays (1-5s) for respectful API usage
+- ✅ ~100,000+ camping locations expected after full collection
+- ✅ Jobs running: UK, France, Italy currently scraping
+
+Next scheduled run: Spain - Tuesday 1:00 AM UTC
 
 ## Contributing
 

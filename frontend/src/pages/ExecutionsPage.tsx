@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   Box,
-  Chip,
   Paper,
   Table,
   TableBody,
@@ -10,31 +9,49 @@ import {
   TableHead,
   TableRow,
   Typography,
-  IconButton,
 } from '@mui/material';
-import { Visibility } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
-import { executionApi } from '../api/client';
-import { format } from 'date-fns';
+import { executionApi, scraperApi, jobApi } from '../api/client';
+import ExecutionRow from '../components/ExecutionRow';
 
 const ExecutionsPage: React.FC = () => {
   const { data: executions, isLoading } = useQuery({
     queryKey: ['executions'],
     queryFn: () => executionApi.list(0, 100),
+    refetchInterval: 5000, // Refresh every 5 seconds to catch new executions
   });
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'success':
-        return 'success';
-      case 'failed':
-        return 'error';
-      case 'running':
-        return 'info';
-      default:
-        return 'default';
+  const { data: scrapers } = useQuery({
+    queryKey: ['scrapers'],
+    queryFn: () => scraperApi.list(0, 100),
+  });
+
+  const { data: jobs } = useQuery({
+    queryKey: ['jobs'],
+    queryFn: () => jobApi.list(0, 100),
+  });
+
+  // Create a map of scraper ID to name
+  const scraperMap = React.useMemo(() => {
+    const map: Record<number, string> = {};
+    if (scrapers) {
+      scrapers.items.forEach(scraper => {
+        map[scraper.id] = scraper.name;
+      });
     }
-  };
+    return map;
+  }, [scrapers]);
+
+  // Create a map of job ID to name
+  const jobMap = React.useMemo(() => {
+    const map: Record<number, string> = {};
+    if (jobs) {
+      jobs.items.forEach(job => {
+        map[job.id] = job.name;
+      });
+    }
+    return map;
+  }, [jobs]);
 
   if (isLoading) return <Typography>Loading...</Typography>;
 
@@ -49,7 +66,7 @@ const ExecutionsPage: React.FC = () => {
           <TableHead>
             <TableRow>
               <TableCell>ID</TableCell>
-              <TableCell>Scraper ID</TableCell>
+              <TableCell>Job / Scraper</TableCell>
               <TableCell>Status</TableCell>
               <TableCell>Items Scraped</TableCell>
               <TableCell>Started</TableCell>
@@ -59,39 +76,17 @@ const ExecutionsPage: React.FC = () => {
           </TableHead>
           <TableBody>
             {executions?.items.map((execution) => {
-              const duration = execution.completed_at
-                ? (new Date(execution.completed_at).getTime() -
-                    new Date(execution.started_at).getTime()) /
-                  1000
-                : null;
+              // Prefer job name, fallback to scraper name, then ID
+              const displayName = execution.job_id
+                ? (jobMap[execution.job_id] || `Job ${execution.job_id}`)
+                : (scraperMap[execution.scraper_id] || `Scraper ${execution.scraper_id}`);
 
               return (
-                <TableRow key={execution.id}>
-                  <TableCell>{execution.id}</TableCell>
-                  <TableCell>{execution.scraper_id}</TableCell>
-                  <TableCell>
-                    <Chip
-                      label={execution.status}
-                      size="small"
-                      color={getStatusColor(execution.status) as any}
-                    />
-                  </TableCell>
-                  <TableCell>{execution.items_scraped}</TableCell>
-                  <TableCell>{format(new Date(execution.started_at), 'PPp')}</TableCell>
-                  <TableCell>{duration ? `${duration.toFixed(1)}s` : 'Running...'}</TableCell>
-                  <TableCell align="right">
-                    <IconButton
-                      size="small"
-                      onClick={() => {
-                        executionApi.getLogs(execution.id).then((data) => {
-                          alert(data.logs || 'No logs available');
-                        });
-                      }}
-                    >
-                      <Visibility />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
+                <ExecutionRow
+                  key={execution.id}
+                  execution={execution}
+                  scraperName={displayName}
+                />
               );
             })}
           </TableBody>

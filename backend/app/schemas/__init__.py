@@ -18,6 +18,14 @@ from app.schemas.execution import (
     ExecutionListResponse,
     ExecutionStats
 )
+from app.schemas.auth import (
+    UserBase,
+    UserCreate,
+    UserResponse,
+    UserLogin,
+    Token,
+    TokenData
+)
 
 __all__ = [
     "ScraperCreate",
@@ -33,4 +41,10 @@ __all__ = [
     "ExecutionResponse",
     "ExecutionListResponse",
     "ExecutionStats",
+    "UserBase",
+    "UserCreate",
+    "UserResponse",
+    "UserLogin",
+    "Token",
+    "TokenData",
 ]

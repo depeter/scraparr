@@ -1,4 +1,4 @@
 """API routes"""
-from app.api import scrapers, jobs, executions
+from . import scrapers, jobs, executions, proxy, database, auth
 
-__all__ = ["scrapers", "jobs", "executions"]
+__all__ = ["scrapers", "jobs", "executions", "proxy", "database", "auth"]

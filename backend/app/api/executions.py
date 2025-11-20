@@ -5,7 +5,8 @@ from sqlalchemy import select, func, and_
 from typing import Optional
 
 from app.core.database import get_db
-from app.models import Execution
+from app.core.security import get_current_active_user
+from app.models import Execution, User
 from app.schemas import (
     ExecutionResponse,
     ExecutionListResponse,

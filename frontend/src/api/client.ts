@@ -7,9 +7,15 @@ import type {
   Execution,
   ExecutionStats,
   PaginatedResponse,
+  LoginRequest,
+  RegisterRequest,
+  AuthResponse,
+  User,
 } from '../types';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+// Use relative URL to work with any protocol (HTTP/HTTPS) and hostname
+// This is especially important when using Cloudflare tunnels or reverse proxies
+const API_URL = process.env.REACT_APP_API_URL || '';
 
 const client = axios.create({
   baseURL: `${API_URL}/api`,
@@ -17,6 +23,29 @@ const client = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// Add auth token to requests
+client.interceptors.request.use((config) => {
+  const token = localStorage.getItem('auth_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Handle auth errors
+client.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Clear token and redirect to login
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('auth_user');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
 
 // Scrapers
 export const scraperApi = {
@@ -130,5 +159,23 @@ export const executionApi = {
 
   delete: async (id: number): Promise<void> => {
     await client.delete(`/executions/${id}`);
+  },
+};
+
+// Authentication
+export const authApi = {
+  login: async (data: LoginRequest): Promise<AuthResponse> => {
+    const response = await client.post('/auth/login', data);
+    return response.data;
+  },
+
+  register: async (data: RegisterRequest): Promise<AuthResponse> => {
+    const response = await client.post('/auth/register', data);
+    return response.data;
+  },
+
+  me: async (): Promise<User> => {
+    const response = await client.get('/auth/me');
+    return response.data;
   },
 };

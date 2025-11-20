@@ -1,0 +1,13 @@
+# CamperContact Scraper Dependencies
+
+# For traffic capture and analysis
+mitmproxy>=9.0.0
+
+# For the scraper
+requests>=2.31.0
+
+# Optional: for advanced analysis
+pandas>=2.0.0
+
+# Optional: for better JSON handling
+ujson>=5.8.0

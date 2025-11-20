@@ -5,7 +5,8 @@ from sqlalchemy import select, func
 from typing import List
 
 from app.core.database import get_db, create_db_schema, drop_db_schema
-from app.models import Scraper
+from app.core.security import get_current_active_user
+from app.models import Scraper, User
 from app.schemas import (
     ScraperCreate,
     ScraperUpdate,
@@ -21,7 +22,8 @@ router = APIRouter(prefix="/scrapers", tags=["scrapers"])
 async def list_scrapers(
     skip: int = 0,
     limit: int = 100,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
 ):
     """List all scrapers"""
     # Count total
@@ -46,7 +48,8 @@ async def list_scrapers(
 @router.post("", response_model=ScraperResponse, status_code=status.HTTP_201_CREATED)
 async def create_scraper(
     scraper_data: ScraperCreate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
 ):
     """Create a new scraper"""
 
@@ -100,7 +103,8 @@ async def create_scraper(
 @router.get("/{scraper_id}", response_model=ScraperResponse)
 async def get_scraper(
     scraper_id: int,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
 ):
     """Get scraper by ID"""
     result = await db.execute(
@@ -121,7 +125,8 @@ async def get_scraper(
 async def update_scraper(
     scraper_id: int,
     scraper_data: ScraperUpdate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
 ):
     """Update scraper"""
     result = await db.execute(
@@ -162,7 +167,8 @@ async def update_scraper(
 @router.delete("/{scraper_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_scraper(
     scraper_id: int,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
 ):
     """Delete scraper"""
     result = await db.execute(
@@ -197,7 +203,8 @@ async def delete_scraper(
 async def run_scraper(
     scraper_id: int,
     params: dict = {},
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
 ):
     """Run scraper immediately"""
     result = await db.execute(
@@ -239,7 +246,8 @@ async def run_scraper(
 @router.post("/validate", response_model=dict)
 async def validate_scraper(
     module_path: str,
-    class_name: str
+    class_name: str,
+    current_user: User = Depends(get_current_active_user)
 ):
     """Validate that a scraper can be loaded"""
     validation = await ScraperRunner.validate_scraper(module_path, class_name)

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Scraparr API Test</title>
+</head>
+<body>
+    <h1>Scraparr API Test</h1>
+    <button onclick="testAPI()">Test API Connection</button>
+    <pre id="result"></pre>
+
+    <script>
+        async function testAPI() {
+            const resultEl = document.getElementById('result');
+            resultEl.textContent = 'Testing...';
+
+            try {
+                const response = await fetch('http://192.168.1.6:8000/api/scrapers');
+                const data = await response.json();
+                resultEl.textContent = 'Success!\n\n' + JSON.stringify(data, null, 2);
+            } catch (error) {
+                resultEl.textContent = 'Error: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>

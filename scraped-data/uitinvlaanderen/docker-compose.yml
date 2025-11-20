@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # UiTinVlaanderen Scraper
+  scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: uitinvlaanderen-scraper
+    environment:
+      - UITDATABANK_API_KEY=${UITDATABANK_API_KEY:-}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Mount output directory for scraped data
+      - ./output:/app/output
+      # Mount code for development (optional)
+      - ./scraper.py:/app/scraper.py
+      - ./web_scraper.py:/app/web_scraper.py
+      - ./example.py:/app/example.py
+    restart: unless-stopped
+    # Run as a scheduled task (runs once then exits)
+    # Override with: docker-compose run scraper python scraper.py
+    command: python example.py
+
+  # Optional: Scheduler service using cron
+  scraper-scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: uitinvlaanderen-scheduler
+    environment:
+      - UITDATABANK_API_KEY=${UITDATABANK_API_KEY:-}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./output:/app/output
+      - ./scraper.py:/app/scraper.py
+      - ./cron-script.sh:/app/cron-script.sh
+    restart: unless-stopped
+    # Run continuously with a loop
+    command: >
+      sh -c "while true; do
+        echo 'Running scraper at' $$(date);
+        python scraper.py || echo 'Scraper failed';
+        echo 'Waiting 24 hours...';
+        sleep 86400;
+      done"
+
+volumes:
+  output:
+    driver: local
