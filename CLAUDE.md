@@ -943,6 +943,256 @@ if offset + limit_per_page > 10000:
 - Verify GraphQL query syntax
 - Check execution logs for errors
 
+## Ticketmaster Scraper
+
+### Overview
+
+Ticketmaster is the world's largest ticket marketplace. The scraper (`ticketmaster_scraper.py`) uses the **Ticketmaster Discovery API v2** to collect event data across European countries.
+
+**Key Details**:
+- API: `https://app.ticketmaster.com/discovery/v2/events.json`
+- Requires free API key from https://developer.ticketmaster.com/
+- Rate limits: 5,000 calls/day, 5 requests/second (free tier)
+- Schema: `scraper_4`
+- 24 European countries supported
+
+**Credentials**:
+- API Key: `tjj2247AysyVJPd5Jnotqu2WQuCAlTIY`
+- Stored in: `/home/peter/work/scraparr/.ticketmaster_credentials`
+
+### API Architecture
+
+**REST API Endpoint**: Official public API with comprehensive documentation
+
+**Key Features**:
+```
+GET https://app.ticketmaster.com/discovery/v2/events.json
+  ?apikey=YOUR_KEY
+  &countryCode=GB
+  &size=200
+  &page=0
+  &sort=date,asc
+```
+
+**Response**: JSON with events array, pagination info, and embedded venue/promoter data
+
+### Scraper Implementation
+
+**Class**: `TicketmasterScraper` (extends `BaseScraper`)
+
+**Scraper Type**: `ScraperType.API`
+
+**Key Features**:
+1. Automatic pagination (200 events per page, unlimited pages)
+2. Rate limiting (0.5-2 second delays)
+3. 429 error handling (60-second backoff)
+4. Proper logging via `self.log()`
+5. Rich event data (venue, pricing, genres, promoters)
+6. Automatic deduplication
+
+**Parameters**:
+```python
+{
+  "api_key": "tjj2247AysyVJPd5Jnotqu2WQuCAlTIY",  # Required
+  "country_code": "GB",          # ISO code or "all" for all EU countries
+  "city": "London",              # Optional city filter
+  "keyword": "rock",             # Optional search keyword
+  "segment_name": "Music",       # Optional: Music, Sports, Arts & Theatre, Film
+  "genre_id": "KnvZfZ7vAeA",     # Optional Ticketmaster genre ID
+  "start_date": "2025-12-01T00:00:00Z",  # Optional date range
+  "end_date": "2025-12-31T23:59:59Z",
+  "size": 200,                   # Events per page (max 200)
+  "max_events": 5000,            # Maximum total events
+  "min_delay": 0.5,              # Min delay between requests
+  "max_delay": 2.0               # Max delay between requests
+}
+```
+
+### Database Tables (Schema: scraper_4)
+
+**`scraper_4.events`** - Event data:
+```sql
+id, event_id (unique), name, description, url, info,
+start_date, start_date_local, timezone, status_code,
+venue_id, venue_name, venue_address, city, postal_code,
+country, country_code, latitude, longitude,
+price_min, price_max, currency,
+genre, segment, classifications (JSON),
+promoter_id, promoter_name,
+image_url, image_ratio,
+external_links (JSON),
+scraped_at, updated_at
+```
+
+**Key Fields**:
+- `event_id`: Ticketmaster event ID (unique across scrapes)
+- `start_date`: DateTime in UTC
+- `start_date_local`: Local date/time string
+- `latitude`/`longitude`: Venue coordinates
+- `segment`: Event category (Music, Sports, Arts & Theatre, etc.)
+- `genre`: Specific genre (Rock, Pop, Football, etc.)
+- `classifications`: Full JSON of all classifications
+- `external_links`: Social media links as JSON
+
+### Supported Countries
+
+24 European countries with Ticketmaster presence:
+
+- Austria (AT)
+- Belgium (BE)
+- Bulgaria (BG)
+- Croatia (HR)
+- Czech Republic (CZ)
+- Denmark (DK)
+- Finland (FI)
+- France (FR)
+- Germany (DE)
+- Greece (GR)
+- Hungary (HU)
+- Iceland (IS)
+- Ireland (IE)
+- Italy (IT)
+- Netherlands (NL)
+- Norway (NO)
+- Poland (PL)
+- Portugal (PT)
+- Romania (RO)
+- Spain (ES)
+- Sweden (SE)
+- Switzerland (CH)
+- Turkey (TR)
+- United Kingdom (GB)
+
+### Current Schedule
+
+**Recommended**: Weekly scraping spread across 6 days (Monday-Saturday)
+
+**Schedule Creation**:
+```bash
+cd /home/peter/work/scraparr/scrapers
+export TICKETMASTER_API_KEY="tjj2247AysyVJPd5Jnotqu2WQuCAlTIY"
+python create_ticketmaster_jobs.py
+```
+
+**Creates 24 jobs**:
+- **Monday (1-4am)**: UK, Ireland, Germany, France
+- **Tuesday (1-4am)**: Spain, Italy, Netherlands, Belgium
+- **Wednesday (1-4am)**: Switzerland, Austria, Sweden, Norway
+- **Thursday (1-4am)**: Denmark, Finland, Poland, Czech Republic
+- **Friday (1-4am)**: Portugal, Greece, Hungary, Romania
+- **Saturday (1-4am)**: Croatia, Bulgaria, Turkey, Iceland
+
+**Runtime**: ~15-25 minutes per country for 5,000 events
+
+### Important Implementation Notes
+
+**API Rate Limits**:
+- Free tier: 5,000 calls/day, 5 requests/second
+- 200 events per request
+- Can scrape ~1,000,000 events per day theoretically
+- Weekly schedule uses ~100 requests per country (~2,400/week total)
+
+**Error Handling**:
+```python
+# Handle 429 rate limit errors
+except httpx.HTTPStatusError as e:
+    if e.response.status_code == 429:
+        self.log(f"Rate limited, waiting 60 seconds...", level="warning")
+        await asyncio.sleep(60)
+        continue
+```
+
+**Pagination**:
+```python
+# API returns pagination info
+page_data = data.get('page', {})
+total_pages = page_data.get('totalPages', 1)
+total_elements = page_data.get('totalElements', 0)
+```
+
+### Data Quality
+
+**Coverage**: Typically 1,000-10,000 events per country
+**Update Frequency**: Weekly recommended to catch new events
+**Completeness**: Official source, most comprehensive for major venues
+
+**Event Types**:
+- Music: Concerts, festivals, tours
+- Sports: Football, basketball, tennis, etc.
+- Arts & Theatre: Theater, ballet, opera
+- Film: Cinema, film festivals
+- Miscellaneous: Comedy, family events, exhibitions
+
+### Usage Examples
+
+**Example 1: Scrape all UK events**:
+```json
+{
+  "api_key": "tjj2247AysyVJPd5Jnotqu2WQuCAlTIY",
+  "country_code": "GB",
+  "max_events": 5000
+}
+```
+
+**Example 2: London music events**:
+```json
+{
+  "api_key": "tjj2247AysyVJPd5Jnotqu2WQuCAlTIY",
+  "country_code": "GB",
+  "city": "London",
+  "segment_name": "Music",
+  "max_events": 2000
+}
+```
+
+**Example 3: Upcoming football in Germany**:
+```json
+{
+  "api_key": "tjj2247AysyVJPd5Jnotqu2WQuCAlTIY",
+  "country_code": "DE",
+  "keyword": "football",
+  "segment_name": "Sports",
+  "start_date": "2025-12-01T00:00:00Z"
+}
+```
+
+### Troubleshooting
+
+**401 Unauthorized**:
+- Check API key is correct
+- Verify app is activated at https://developer.ticketmaster.com/
+
+**429 Rate Limited**:
+- Wait for daily limit reset (midnight UTC)
+- Increase delays: `min_delay: 1.0, max_delay: 3.0`
+- Reduce max_events per job
+
+**No events found**:
+- Try without filters first (just country_code)
+- Check Ticketmaster website for event availability
+- Verify city name spelling
+
+**Import errors**:
+- Ensure scraper file is in `/home/peter/work/scraparr/scrapers/`
+- Check `from app.scrapers.base import BaseScraper` works
+- Verify Python path includes backend directory
+
+### Documentation
+
+- **Full Documentation**: `/home/peter/work/scraparr/scrapers/TICKETMASTER_README.md`
+- **Quick Start Guide**: `/home/peter/work/scraparr/scrapers/TICKETMASTER_QUICKSTART.md`
+- **Credentials**: `/home/peter/work/scraparr/.ticketmaster_credentials`
+- **Job Creator**: `/home/peter/work/scraparr/scrapers/create_ticketmaster_jobs.py`
+
+### API Documentation
+
+**Official Docs**: https://developer.ticketmaster.com/products-and-docs/apis/discovery-api/v2/
+
+**Key Endpoints**:
+- Events Search: `/discovery/v2/events.json`
+- Event Details: `/discovery/v2/events/{id}.json`
+- Classifications: `/discovery/v2/classifications.json`
+
 ## Deployment to Scraparr Server
 
 ### Server Details
@@ -1422,6 +1672,8 @@ docker logs scraparr-backend --tail 200 | grep -A 10 "ERROR"
 
 - `scrapers/park4night_scraper.py` - Park4Night grid scraper (scraper_2)
 - `scrapers/uitinvlaanderen_scraper.py` - UiT in Vlaanderen GraphQL scraper (scraper_3)
+- `scrapers/ticketmaster_scraper.py` - Ticketmaster Discovery API scraper (scraper_4)
+- `scrapers/eventbrite_scraper.py` - Eventbrite web scraper (not yet registered)
 
 ### Key Backend Files
 
@@ -1502,7 +1754,7 @@ INSERT INTO scraper_2.grid_progress
 VALUES ('france', 45.5, 3.0, 87, NOW());
 ```
 
-## Current State (as of 2025-11-13)
+## Current State (as of 2025-11-21)
 
 ### Infrastructure
 - ✅ Docker Compose setup running on remote server (scraparr.pm-consulting.be)
@@ -1511,6 +1763,7 @@ VALUES ('france', 45.5, 3.0, 87, NOW());
 - ✅ React frontend with production build (Nginx)
 - ✅ CORS configured for production
 - ✅ Database query interface deployed
+- ✅ Authentication system with JWT tokens
 
 ### Scrapers
 - ✅ **Park4Night** grid scraper fully implemented (scraper_2)
@@ -1525,14 +1778,24 @@ VALUES ('france', 45.5, 3.0, 87, NOW());
   - 10,000 event pagination limit handled
   - Missing geo data gracefully handled
 
+- ✅ **Ticketmaster** Discovery API scraper implemented (scraper_4)
+  - Official API with free tier (5,000 calls/day)
+  - 24 European countries supported
+  - Rich event data (venue, pricing, genres, promoters)
+  - Rate limiting and 429 error handling
+  - Automatic pagination (200 events/page)
+  - Ready for deployment
+
 ### Jobs
 - ✅ Park4Night: 29 European country jobs (weekly schedules, Mon-Sun 1-5 AM)
 - ✅ UiT in Vlaanderen: Daily scrape at 2:00 AM (10,000 events)
+- 🔧 Ticketmaster: 24 country jobs ready to create (via script)
 - ✅ APScheduler managing all jobs with auto-reload
 
 ### Data
 - ✅ **scraper_2**: Park4Night places, reviews, grid_progress
 - ✅ **scraper_3**: UiT in Vlaanderen events (~10,000 events daily)
+- 🔧 **scraper_4**: Ticketmaster events (ready to populate)
 - ✅ Database query interface for read-only SQL access
 
 ### Features

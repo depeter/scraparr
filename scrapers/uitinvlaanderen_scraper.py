@@ -7,6 +7,8 @@ GraphQL-based scraper for UiT in Vlaanderen events (uses api.uit.be)
 import asyncio
 import httpx
 import random
+import re
+import unicodedata
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import logging
@@ -27,6 +29,29 @@ except ImportError:
         API = "api"
 
 logger = logging.getLogger(__name__)
+
+
+def slugify(text: str) -> str:
+    """
+    Convert text to URL-friendly slug.
+    E.g., "Gratis Rondleiding Gent" -> "gratis-rondleiding-gent"
+    """
+    if not text:
+        return "event"
+    # Normalize unicode characters
+    text = unicodedata.normalize('NFKD', text)
+    # Remove non-ASCII characters
+    text = text.encode('ascii', 'ignore').decode('ascii')
+    # Convert to lowercase
+    text = text.lower()
+    # Replace spaces and special chars with hyphens
+    text = re.sub(r'[^a-z0-9]+', '-', text)
+    # Remove leading/trailing hyphens
+    text = text.strip('-')
+    # Limit length
+    if len(text) > 100:
+        text = text[:100].rsplit('-', 1)[0]
+    return text or "event"
 
 
 class UiTinVlaanderenScraper(BaseScraper):
@@ -291,8 +316,10 @@ class UiTinVlaanderenScraper(BaseScraper):
             organizer = event_data.get('organizer', {})
             organizer_name = organizer.get('name') if organizer else None
 
-            # Build URL
-            url = f"https://www.uitinvlaanderen.be/agenda/e/{event_id}"
+            # Build URL with slug for proper routing
+            # Format: https://www.uitinvlaanderen.be/agenda/e/{slug}/{event_id}
+            slug = slugify(name)
+            url = f"https://www.uitinvlaanderen.be/agenda/e/{slug}/{event_id}"
 
             return {
                 'event_id': event_id,
@@ -351,7 +378,7 @@ class UiTinVlaanderenScraper(BaseScraper):
         return [events_table]
 
     async def after_scrape(self, results: List[Dict], params: Dict):
-        """Store scraped events in database"""
+        """Store scraped events in database using batch inserts for performance"""
         if not results:
             self.log("No events found")
             return
@@ -370,9 +397,11 @@ class UiTinVlaanderenScraper(BaseScraper):
                 # Create table if it doesn't exist
                 await conn.run_sync(self.metadata.create_all)
 
-                # Insert or update events
+                # Prepare all event data for batch insert
+                now = datetime.utcnow()
+                events_data = []
                 for event in results:
-                    event_data = {
+                    events_data.append({
                         'event_id': event.get('event_id'),
                         'name': event.get('name'),
                         'description': event.get('description'),
@@ -390,12 +419,19 @@ class UiTinVlaanderenScraper(BaseScraper):
                         'themes': event.get('themes'),
                         'url': event.get('url'),
                         'image_url': event.get('image_url'),
-                        'scraped_at': datetime.utcnow(),
-                        'updated_at': datetime.utcnow(),
-                    }
+                        'scraped_at': now,
+                        'updated_at': now,
+                    })
 
-                    # Upsert event (insert or update if exists)
-                    stmt = pg_insert(events_table).values(**event_data)
+                # Batch upsert in chunks of 500 for better performance
+                batch_size = 500
+                total_stored = 0
+
+                for i in range(0, len(events_data), batch_size):
+                    batch = events_data[i:i + batch_size]
+
+                    # Use PostgreSQL's ON CONFLICT for batch upsert
+                    stmt = pg_insert(events_table).values(batch)
                     stmt = stmt.on_conflict_do_update(
                         index_elements=['event_id'],
                         set_={
@@ -420,6 +456,8 @@ class UiTinVlaanderenScraper(BaseScraper):
                     )
 
                     await conn.execute(stmt)
+                    total_stored += len(batch)
+                    self.log(f"Stored batch {i // batch_size + 1}: {total_stored}/{len(events_data)} events")
 
             self.log(f"Successfully stored {len(results)} events in database")
 

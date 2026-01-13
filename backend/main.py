@@ -7,7 +7,7 @@ import logging
 from app.core.config import settings
 from app.core.database import init_db
 from app.services import scheduler_service
-from app.api import scrapers, jobs, executions, proxy, database, websocket, auth
+from app.api import scrapers, jobs, executions, proxy, database, websocket, auth, system
 
 # Configure logging
 logging.basicConfig(
@@ -70,6 +70,7 @@ app.include_router(executions.router, prefix="/api")
 app.include_router(proxy.router, prefix="/api")
 app.include_router(database.router)
 app.include_router(websocket.router)
+app.include_router(system.router, prefix="/api")
 
 
 @app.get("/")

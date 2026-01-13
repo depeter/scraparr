@@ -103,3 +103,30 @@ export interface AuthResponse {
   token_type: string;
   user: User;
 }
+
+export interface DiskUsage {
+  mount_point: string;
+  total_gb: number;
+  used_gb: number;
+  free_gb: number;
+  percent_used: number;
+}
+
+export interface SystemStats {
+  cpu_percent: number;
+  cpu_count: number;
+  memory_total_gb: number;
+  memory_used_gb: number;
+  memory_available_gb: number;
+  memory_percent: number;
+  disks: DiskUsage[];
+  network_bytes_sent: number;
+  network_bytes_recv: number;
+  uptime_seconds: number;
+  boot_time: string;
+  process_count: number;
+  docker_containers_running?: number;
+  docker_containers_total?: number;
+  database_size_mb?: number;
+  timestamp: string;
+}

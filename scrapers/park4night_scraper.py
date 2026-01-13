@@ -48,10 +48,12 @@ class Park4NightScraper(BaseScraper):
             Column('pays', String(100)),
             Column('ville', String(200)),
             Column('description', Text),  # Fallback description (priority: en > fr > nl > de > es > it)
+            Column('description_en', Text),  # English description specifically
             Column('prix', String(100)),
             Column('rating', Float),
             Column('nb_comment', Integer),
             Column('services', JSON),
+            Column('photos', JSON),  # Array of photo objects with link_large, link_thumb URLs
             Column('raw_data', JSON),  # Store complete API response
             Column('scraped_at', DateTime, default=func.now()),
             Column('updated_at', DateTime, default=func.now(), onupdate=func.now()),
@@ -149,6 +151,14 @@ class Park4NightScraper(BaseScraper):
                         place.get('description')
                     )
 
+                    # Extract photos array (contains link_large, link_thumb URLs)
+                    photos = place.get('photos')
+                    if photos and isinstance(photos, list):
+                        # Keep the full photo objects for flexibility
+                        photos_data = photos
+                    else:
+                        photos_data = None
+
                     # Prepare place data with type conversions
                     place_data = {
                         'id': safe_int(place.get('id')),
@@ -159,10 +169,12 @@ class Park4NightScraper(BaseScraper):
                         'pays': place.get('pays'),
                         'ville': place.get('ville'),
                         'description': fallback_description,
+                        'description_en': language_descriptions.get('en'),  # English description specifically
                         'prix': place.get('prix_stationnement') or place.get('prix'),
                         'rating': safe_float(place.get('note_moyenne') or place.get('rating')),
                         'nb_comment': safe_int(place.get('nb_commentaires') or place.get('nbComment') or place.get('nb_comment')),
                         'services': place.get('services'),
+                        'photos': photos_data,  # Array of photo objects with URLs
                         'raw_data': place,  # Store complete response
                         'updated_at': datetime.utcnow(),
                     }
@@ -179,10 +191,12 @@ class Park4NightScraper(BaseScraper):
                             'pays': stmt.excluded.pays,
                             'ville': stmt.excluded.ville,
                             'description': stmt.excluded.description,
+                            'description_en': stmt.excluded.description_en,
                             'prix': stmt.excluded.prix,
                             'rating': stmt.excluded.rating,
                             'nb_comment': stmt.excluded.nb_comment,
                             'services': stmt.excluded.services,
+                            'photos': stmt.excluded.photos,
                             'raw_data': stmt.excluded.raw_data,
                             'updated_at': stmt.excluded.updated_at,
                         }
@@ -411,10 +425,12 @@ class Park4NightUserScraper(BaseScraper):
             Column('pays', String(100)),
             Column('ville', String(200)),
             Column('description', Text),
+            Column('description_en', Text),  # English description specifically
             Column('prix', String(100)),
             Column('rating', Float),
             Column('nb_comment', Integer),
             Column('services', JSON),
+            Column('photos', JSON),  # Array of photo objects with link_large, link_thumb URLs
             Column('raw_data', JSON),
             Column('scraped_at', DateTime, default=func.now()),
             Column('updated_at', DateTime, default=func.now(), onupdate=func.now()),
@@ -440,6 +456,17 @@ class Park4NightUserScraper(BaseScraper):
                 await conn.run_sync(self.metadata.create_all)
 
                 for place in results:
+                    # Extract photos
+                    photos = place.get('photos')
+                    photos_data = photos if photos and isinstance(photos, list) else None
+
+                    # Extract English description
+                    description_en = place.get('description_en')
+                    if description_en and description_en.strip():
+                        description_en = description_en.strip()
+                    else:
+                        description_en = None
+
                     place_data = {
                         'id': place.get('id'),
                         'nom': place.get('nom'),
@@ -449,10 +476,12 @@ class Park4NightUserScraper(BaseScraper):
                         'pays': place.get('pays'),
                         'ville': place.get('ville'),
                         'description': place.get('description'),
+                        'description_en': description_en,
                         'prix': place.get('prix'),
                         'rating': place.get('rating'),
                         'nb_comment': place.get('nbComment') or place.get('nb_comment'),
                         'services': place.get('services'),
+                        'photos': photos_data,
                         'raw_data': place,
                         'updated_at': datetime.utcnow(),
                     }
@@ -596,10 +625,12 @@ class Park4NightBulkScraper(BaseScraper):
             Column('pays', String(100)),
             Column('ville', String(200)),
             Column('description', Text),
+            Column('description_en', Text),  # English description specifically
             Column('prix', String(100)),
             Column('rating', Float),
             Column('nb_comment', Integer),
             Column('services', JSON),
+            Column('photos', JSON),  # Array of photo objects with link_large, link_thumb URLs
             Column('raw_data', JSON),
             Column('scraped_at', DateTime, default=func.now()),
             Column('updated_at', DateTime, default=func.now(), onupdate=func.now()),
@@ -688,6 +719,10 @@ class Park4NightBulkScraper(BaseScraper):
                         place.get('description')
                     )
 
+                    # Extract photos array
+                    photos = place.get('photos')
+                    photos_data = photos if photos and isinstance(photos, list) else None
+
                     place_data = {
                         'id': safe_int(place.get('id')),
                         'nom': place.get('nom'),
@@ -697,10 +732,12 @@ class Park4NightBulkScraper(BaseScraper):
                         'pays': place.get('pays'),
                         'ville': place.get('ville'),
                         'description': fallback_description,
+                        'description_en': language_descriptions.get('en'),
                         'prix': place.get('prix'),
                         'rating': safe_float(place.get('rating')),
                         'nb_comment': place.get('nbComment') or place.get('nb_comment'),
                         'services': place.get('services'),
+                        'photos': photos_data,
                         'raw_data': place,
                         'updated_at': datetime.utcnow(),
                     }
@@ -716,10 +753,12 @@ class Park4NightBulkScraper(BaseScraper):
                             'pays': stmt.excluded.pays,
                             'ville': stmt.excluded.ville,
                             'description': stmt.excluded.description,
+                            'description_en': stmt.excluded.description_en,
                             'prix': stmt.excluded.prix,
                             'rating': stmt.excluded.rating,
                             'nb_comment': stmt.excluded.nb_comment,
                             'services': stmt.excluded.services,
+                            'photos': stmt.excluded.photos,
                             'raw_data': stmt.excluded.raw_data,
                             'updated_at': stmt.excluded.updated_at,
                         }
@@ -957,10 +996,12 @@ class Park4NightGridScraper(BaseScraper):
             Column('pays', String(100)),
             Column('ville', String(200)),
             Column('description', Text),
+            Column('description_en', Text),  # English description specifically
             Column('prix', String(100)),
             Column('rating', Float),
             Column('nb_comment', Integer),
             Column('services', JSON),
+            Column('photos', JSON),  # Array of photo objects with link_large, link_thumb URLs
             Column('raw_data', JSON),
             Column('scraped_at', DateTime, default=func.now()),
             Column('updated_at', DateTime, default=func.now(), onupdate=func.now()),
@@ -1066,6 +1107,10 @@ class Park4NightGridScraper(BaseScraper):
                         place.get('description')
                     )
 
+                    # Extract photos array (contains link_large, link_thumb URLs)
+                    photos = place.get('photos')
+                    photos_data = photos if photos and isinstance(photos, list) else None
+
                     place_data = {
                         'id': safe_int(place.get('id')),
                         'nom': place.get('titre') or place.get('nom'),
@@ -1075,10 +1120,12 @@ class Park4NightGridScraper(BaseScraper):
                         'pays': place.get('pays'),
                         'ville': place.get('ville'),
                         'description': fallback_description,
+                        'description_en': language_descriptions.get('en'),  # English description specifically
                         'prix': place.get('prix_stationnement') or place.get('prix'),
                         'rating': safe_float(place.get('note_moyenne') or place.get('rating')),
                         'nb_comment': safe_int(place.get('nb_commentaires') or place.get('nbComment') or place.get('nb_comment')),
                         'services': place.get('services'),
+                        'photos': photos_data,  # Array of photo objects with URLs
                         'raw_data': place,
                         'updated_at': datetime.utcnow(),
                     }
@@ -1094,10 +1141,12 @@ class Park4NightGridScraper(BaseScraper):
                             'pays': stmt.excluded.pays,
                             'ville': stmt.excluded.ville,
                             'description': stmt.excluded.description,
+                            'description_en': stmt.excluded.description_en,
                             'prix': stmt.excluded.prix,
                             'rating': stmt.excluded.rating,
                             'nb_comment': stmt.excluded.nb_comment,
                             'services': stmt.excluded.services,
+                            'photos': stmt.excluded.photos,
                             'raw_data': stmt.excluded.raw_data,
                             'updated_at': stmt.excluded.updated_at,
                         }

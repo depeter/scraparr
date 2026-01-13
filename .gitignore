@@ -65,3 +65,4 @@ Thumbs.db
 # Scrapers data
 scrapers/data/
 scrapers/__pycache__/
+.ticketmaster_credentials

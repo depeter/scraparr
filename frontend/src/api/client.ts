@@ -11,6 +11,7 @@ import type {
   RegisterRequest,
   AuthResponse,
   User,
+  SystemStats,
 } from '../types';
 
 // Use relative URL to work with any protocol (HTTP/HTTPS) and hostname
@@ -176,6 +177,14 @@ export const authApi = {
 
   me: async (): Promise<User> => {
     const response = await client.get('/auth/me');
+    return response.data;
+  },
+};
+
+// System
+export const systemApi = {
+  getStats: async (): Promise<SystemStats> => {
+    const response = await client.get('/system/stats');
     return response.data;
   },
 };

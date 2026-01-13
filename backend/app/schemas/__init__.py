@@ -26,6 +26,10 @@ from app.schemas.auth import (
     Token,
     TokenData
 )
+from app.schemas.system import (
+    SystemStats,
+    DiskUsage
+)
 
 __all__ = [
     "ScraperCreate",
@@ -47,4 +51,6 @@ __all__ = [
     "UserLogin",
     "Token",
     "TokenData",
+    "SystemStats",
+    "DiskUsage",
 ]
